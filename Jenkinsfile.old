@@ -1,0 +1,78 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Create Test Artifact') {
+            steps {
+                script {
+                    // Create a simple test file
+                    sh '''
+                        echo "Build Number: ${BUILD_NUMBER}" > test-artifact.txt
+                        echo "Timestamp: $(date)" >> test-artifact.txt
+                        echo "This is a test artifact" >> test-artifact.txt
+                    '''
+                }
+            }
+        }
+        
+        stage('Upload to Artifactory') {
+            steps {
+                script {
+                    // Get Artifactory server instance
+                    def server = Artifactory.server('ecosysjfrog')
+                    
+                    // Create upload spec
+                    def uploadSpec = """{
+                        "files": [
+                            {
+                                "pattern": "test-artifact.txt",
+                                "target": "example-repo-local/test-builds/${BUILD_NUMBER}/"
+                            }
+                        ]
+                    }"""
+                    
+                    // Upload artifact
+                    def buildInfo = server.upload(uploadSpec)
+                    
+                    // Publish build info
+                    server.publishBuildInfo(buildInfo)
+                    
+                    echo "Artifact uploaded successfully to Artifactory"
+                }
+            }
+        }
+        
+        stage('Download from Artifactory') {
+            steps {
+                script {
+                    def server = Artifactory.server('ecosysjfrog')
+                    
+                    // Create download spec
+                    def downloadSpec = """{
+                        "files": [
+                            {
+                                "pattern": "example-repo-local/test-builds/${BUILD_NUMBER}/test-artifact.txt",
+                                "target": "downloaded/"
+                            }
+                        ]
+                    }"""
+                    
+                    // Download artifact
+                    server.download(downloadSpec)
+                    
+                    echo "Artifact downloaded successfully from Artifactory"
+                    
+                    // Verify downloaded file
+                    sh 'cat downloaded/test-artifact.txt'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed'
+            cleanWs()
+        }
+    }
+}
