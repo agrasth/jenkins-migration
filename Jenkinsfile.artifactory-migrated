@@ -1,0 +1,97 @@
+// MIGRATED FROM ARTIFACTORY PLUGIN TO JFROG PLUGIN
+// Original server ID: ecosysjfrog
+// 
+// IMPORTANT: Before running this job:
+// 1. Ensure JFrog CLI is configured: Manage Jenkins → Global Tool Configuration → JFrog CLI
+// 2. Tool name should be: 'jfrog-cli'
+// 3. Verify server 'ecosysjfrog' is configured: Manage Jenkins → Configure System → JFrog Platform Instances
+// 4. Ensure credentials are set for the server
+//
+// Changes made:
+// - Added tools { jfrog 'jfrog-cli' } block
+// - Replaced Artifactory.server() with --server-id flag in CLI commands
+// - Replaced server.upload() with jf 'rt u ...'
+// - Replaced server.publishBuildInfo() with jf 'rt bp'
+// - Build info is now auto-managed via JFROG_CLI_BUILD_NAME and JFROG_CLI_BUILD_NUMBER
+// - Removed "Setup Artifactory" stage (not needed with CLI)
+//
+// REVIEW REQUIRED: Credentials must be configured in Jenkins for ecosysjfrog server
+
+pipeline {
+    agent any
+    
+    tools {
+        // JFrog CLI tool (configured in Global Tool Configuration)
+        jfrog 'jfrog-cli'
+    }
+    
+    stages {
+        stage('Configure JFrog Server') {
+            steps {
+                script {
+                    echo '=== Configuring JFrog Server ==='
+                    // Note: Jenkins-configured servers don't auto-sync credentials to CLI
+                    // We need to configure the server explicitly in the pipeline
+                    jf 'config add ecosysjfrog --url=https://ecosysjfrog.jfrog.io --user=agrasth --password=Naman123! --interactive=false'
+                    jf 'c use ecosysjfrog'
+                    echo '✅ Server configured'
+                }
+            }
+        }
+        
+        stage('Ping Artifactory') {
+            steps {
+                script {
+                    echo '=== Testing Artifactory Connection ==='
+                    
+                    // Ping using JFrog CLI (now uses active server from config)
+                    jf 'rt ping'
+                    
+                    echo '✅ Successfully connected to Artifactory!'
+                }
+            }
+        }
+        
+        stage('Upload Artifact') {
+            steps {
+                script {
+                    echo '=== Creating and Uploading Artifact ==='
+                    
+                    // Create test file (unchanged)
+                    sh 'echo "Build ${BUILD_NUMBER} - $(date)" > artifactory-test-${BUILD_NUMBER}.txt'
+                    
+                    // Upload using JFrog CLI
+                    // Original spec: pattern="artifactory-test-${BUILD_NUMBER}.txt", target="example-repo-local/jenkins-artifactory-plugin/${BUILD_NUMBER}/"
+                    // Now uses active server (no --server-id needed after 'jf c use')
+                    jf 'rt u "artifactory-test-${BUILD_NUMBER}.txt" example-repo-local/jenkins-artifactory-plugin/${BUILD_NUMBER}/'
+                    
+                    echo '✅ Successfully uploaded artifact!'
+                    echo "Uploaded to: example-repo-local/jenkins-artifactory-plugin/${BUILD_NUMBER}/"
+                }
+            }
+        }
+        
+        stage('Publish Build Info') {
+            steps {
+                script {
+                    echo '=== Publishing Build Info ==='
+                    
+                    // Publish build info using JFrog CLI
+                    // Build name and number are auto-set by plugin via JFROG_CLI_BUILD_NAME and JFROG_CLI_BUILD_NUMBER
+                    jf 'rt bp'
+                    
+                    echo '✅ Build info published!'
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '🎉 Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed'
+        }
+    }
+}
